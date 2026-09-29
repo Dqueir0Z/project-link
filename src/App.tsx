@@ -1,7 +1,11 @@
-import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, useLocation, Outlet } from 'react-router-dom';
+import { AuthProvider } from '@/contexts/AuthContext';
 import Layout from '@/components/Layout';
+import ProtectedRoute from '@/components/ProtectedRoute';
 import Home from '@/pages/Home';
+import Login from '@/pages/Login';
+import About from '@/pages/About';
 import CreateLink from '@/pages/CreateLink';
 import LinksDashboard from '@/pages/LinksDashboard';
 import LinkDetails from '@/pages/LinkDetails';
@@ -9,8 +13,6 @@ import EditLink from '@/pages/EditLink';
 import PagesList from '@/pages/PagesList';
 import NewPage from '@/pages/NewPage';
 import EditPage from '@/pages/EditPage';
-import PublicPage from '@/pages/PublicPage';
-import About from '@/pages/About';
 import SlugResolver from '@/pages/SlugResolver';
 
 function ScrollToTop() {
@@ -32,33 +34,46 @@ function NotFound() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <ScrollToTop />
-      <Routes>
-        {/* Standalone routes (no layout) — short link redirects & public pages */}
-        <Route path="/:slug" element={<SlugResolver />} />
+    <AuthProvider>
+      <BrowserRouter>
+        <ScrollToTop />
+        <Routes>
+          {/* Public routes with layout */}
+          <Route element={<Layout />}>
+            <Route path="/" element={<Home />} />
+            <Route path="/sobre" element={<About />} />
+          </Route>
 
-        {/* Layout-wrapped routes */}
-        <Route
-          path="/*"
-          element={
-            <Layout>
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/links" element={<LinksDashboard />} />
-                <Route path="/links/new" element={<CreateLink />} />
-                <Route path="/links/:id" element={<LinkDetails />} />
-                <Route path="/links/:id/edit" element={<EditLink />} />
-                <Route path="/pages" element={<PagesList />} />
-                <Route path="/pages/new" element={<NewPage />} />
-                <Route path="/pages/:id/edit" element={<EditPage />} />
-                <Route path="/sobre" element={<About />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Layout>
-          }
-        />
-      </Routes>
-    </BrowserRouter>
+          {/* Login — standalone, no layout */}
+          <Route path="/login" element={<Login />} />
+
+          {/* Protected routes with layout */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <Layout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/links" element={<LinksDashboard />} />
+            <Route path="/links/new" element={<CreateLink />} />
+            <Route path="/links/:id" element={<LinkDetails />} />
+            <Route path="/links/:id/edit" element={<EditLink />} />
+            <Route path="/pages" element={<PagesList />} />
+            <Route path="/pages/new" element={<NewPage />} />
+            <Route path="/pages/:id/edit" element={<EditPage />} />
+          </Route>
+
+          {/* Dynamic slug resolver — standalone, no layout.
+              Must be LAST so it doesn't intercept static routes. */}
+          <Route path="/:slug" element={<SlugResolver />} />
+
+          {/* 404 fallback */}
+          <Route path="*" element={<Layout />}>
+            <Route path="*" element={<NotFound />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }

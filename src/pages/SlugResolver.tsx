@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { resolveShortLink } from '@/services/links';
-import { getPageBySlug } from '@/services/pages';
+import { resolveShortLink, resolvePublicPage } from '@/services/pages';
 import type { LinkPageWithLinks } from '@/types';
-import PublicPage from './PublicPage';
+import PublicPageView from './PublicPageView';
 import { Link2, AlertTriangle, Clock, PowerOff } from 'lucide-react';
 
 type State = 'loading' | 'redirecting' | 'page' | 'not_found' | 'expired' | 'inactive';
@@ -44,8 +43,8 @@ export default function SlugResolver() {
         return;
       }
 
-      // Not a link — try as a public page
-      const pageData = await getPageBySlug(slug);
+      // Not a link — try as a public page via RPC
+      const { page: pageData } = await resolvePublicPage(slug);
 
       if (cancelled) return;
 
@@ -63,7 +62,7 @@ export default function SlugResolver() {
   }, [slug]);
 
   if (state === 'page' && page) {
-    return <PublicPage />;
+    return <PublicPageView page={page} />;
   }
 
   if (state === 'loading' || state === 'redirecting') {

@@ -2,12 +2,30 @@ const RESERVED_ROUTES = [
   'admin', 'api', 'links', 'about', 'login', 'dashboard', 'settings',
   'pages', '404', 'iniciar', 'meus-links', 'minhas-paginas', 'sobre',
   'p', 'qr', 'create', 'editar', 'novo',
+  'signup', 'register', 'auth', 'logout',
 ];
 
 const ALIAS_REGEX = /^[a-z0-9_-]+$/;
 
+/**
+ * Normalize human-friendly input into a valid alias.
+ * "Meu Portfólio" → "meu-portfolio"
+ * - Lowercase
+ * - Strip accents
+ * - Replace spaces with hyphens
+ * - Collapse repeated hyphens
+ * - Trim leading/trailing hyphens
+ */
 export function normalizeAlias(input: string): string {
-  return input.trim().toLowerCase().replace(/\s+/g, '');
+  return input
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Strip accents
+    .replace(/[^a-z0-9\s_-]/g, '') // Remove invalid chars (keep spaces for hyphen conversion)
+    .replace(/\s+/g, '-') // Spaces → hyphens
+    .replace(/-+/g, '-') // Collapse repeated hyphens
+    .replace(/^-+|-+$/g, ''); // Trim leading/trailing hyphens
 }
 
 export function isValidAlias(input: string): boolean {
@@ -41,6 +59,8 @@ export function suggestAliasFromUrl(url: string): string | null {
     // Take the last meaningful segment
     let suggestion = segments[segments.length - 1]
       .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9_-]/g, '')
       .replace(/^-+|-+$/g, '');
 
@@ -52,3 +72,5 @@ export function suggestAliasFromUrl(url: string): string | null {
     return null;
   }
 }
+
+export { RESERVED_ROUTES };

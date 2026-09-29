@@ -7,6 +7,7 @@ export interface Link {
   click_count: number;
   last_clicked_at: string | null;
   is_active: boolean;
+  owner_id: string | null;
 }
 
 export interface ClickEvent {
@@ -24,6 +25,7 @@ export interface LinkPage {
   avatar_url: string | null;
   created_at: string;
   is_active: boolean;
+  owner_id: string | null;
 }
 
 export interface PageLink {

@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Link2, Check, X, Loader2, Copy, ExternalLink, QrCode as QrIcon, Calendar } from 'lucide-react';
+import { Link2, Check, X, Loader2, Copy, ExternalLink, QrCode as QrIcon, Calendar, Lightbulb } from 'lucide-react';
 import { createLink, checkCodeAvailable } from '@/services/links';
-import { buildShortUrl, normalizeUrl } from '@/utils/url';
-import { normalizeAlias, isValidAlias } from '@/utils/alias';
+import { buildShortUrl, normalizeUrl, getOriginPrefix } from '@/utils/url';
+import { normalizeAlias, isValidAlias, suggestAliasFromUrl } from '@/utils/alias';
+import { formatDateTime, timeAgo, validateCustomExpiration } from '@/utils/date';
 import type { Link, ExpirationOption } from '@/types';
-import { formatDateTime, timeAgo } from '@/utils/date';
 import QrModal from '@/components/QrModal';
 import { useToast } from '@/hooks/useToast';
 import Toast from '@/components/Toast';
@@ -20,6 +20,7 @@ export default function CreateLink() {
   const [customDate, setCustomDate] = useState('');
   const [loading, setLoading] = useState(false);
   const [createdLink, setCreatedLink] = useState<Link | null>(null);
+  const [suggestion, setSuggestion] = useState<string | null>(null);
 
   // Alias availability check
   const [aliasStatus, setAliasStatus] = useState<'idle' | 'checking' | 'available' | 'unavailable'>('idle');
@@ -42,6 +43,29 @@ export default function CreateLink() {
     return () => clearTimeout(timer);
   }, [alias]);
 
+  // Suggest alias from destination URL when alias is empty
+  useEffect(() => {
+    if (alias) {
+      setSuggestion(null);
+      return;
+    }
+    const normalized = normalizeUrl(destinationUrl);
+    if (!normalized) {
+      setSuggestion(null);
+      return;
+    }
+    const sugg = suggestAliasFromUrl(normalized);
+    if (sugg) {
+      // Check availability before offering
+      checkCodeAvailable(sugg).then((available) => {
+        if (available) setSuggestion(sugg);
+        else setSuggestion(null);
+      });
+    } else {
+      setSuggestion(null);
+    }
+  }, [destinationUrl, alias]);
+
   const handleCreate = async () => {
     const normalized = normalizeUrl(destinationUrl);
     if (!normalized) {
@@ -57,9 +81,12 @@ export default function CreateLink() {
       }
     }
 
-    if (expiration === 'custom' && !customDate) {
-      showToast('Selecione uma data de expiração.', 'error');
-      return;
+    if (expiration === 'custom') {
+      const err = validateCustomExpiration(customDate);
+      if (err) {
+        showToast(err, 'error');
+        return;
+      }
     }
 
     setLoading(true);
@@ -91,7 +118,10 @@ export default function CreateLink() {
     setAlias('');
     setExpiration('never');
     setCustomDate('');
+    setSuggestion(null);
   };
+
+  const originPrefix = getOriginPrefix();
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -124,7 +154,7 @@ export default function CreateLink() {
               <label className="block text-sm font-medium text-slate-300 mb-2">Seu link</label>
               <div className="flex items-stretch gap-0">
                 <div className="flex items-center rounded-l-lg border border-r-0 border-slate-700 bg-slate-800 px-3 text-sm text-slate-400">
-                  linkforge.app/
+                  {originPrefix}
                 </div>
                 <input
                   type="text"
@@ -148,6 +178,14 @@ export default function CreateLink() {
                 <p className="mt-1.5 text-xs text-red-400 flex items-center gap-1">
                   <X className="h-3 w-3" /> Alias indisponível
                 </p>
+              )}
+              {suggestion && !alias.trim() && aliasStatus === 'idle' && (
+                <button
+                  onClick={() => setAlias(suggestion)}
+                  className="mt-1.5 text-xs text-slate-500 hover:text-emerald-400 flex items-center gap-1"
+                >
+                  <Lightbulb className="h-3 w-3" /> Sugestão: {suggestion}
+                </button>
               )}
             </div>
 

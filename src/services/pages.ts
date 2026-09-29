@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import type { LinkPage, PageLink, LinkPageWithLinks } from '@/types';
 import { normalizeAlias, isValidAlias, isReservedRoute } from '@/utils/alias';
+import { normalizeAvatarUrl } from '@/utils/pageLinkUrl';
 
 export async function checkSlugAvailable(slug: string): Promise<boolean> {
   const { data, error } = await supabase.rpc('check_code_available', { p_code: slug });
@@ -8,24 +9,24 @@ export async function checkSlugAvailable(slug: string): Promise<boolean> {
   return data === true;
 }
 
-export async function getAllPages(): Promise<LinkPage[]> {
+export async function getAllPages(): Promise<{ pages: LinkPage[]; error: string | null }> {
   const { data, error } = await supabase
     .from('link_pages')
     .select('*')
     .order('created_at', { ascending: false });
 
-  if (error || !data) return [];
-  return data as LinkPage[];
+  if (error) return { pages: [], error: 'Não foi possível carregar suas páginas.' };
+  return { pages: (data as LinkPage[]) || [], error: null };
 }
 
-export async function getPageById(id: string): Promise<LinkPageWithLinks | null> {
+export async function getPageById(id: string): Promise<{ page: LinkPageWithLinks | null; error: string | null }> {
   const { data: pageData, error: pageError } = await supabase
     .from('link_pages')
     .select('*')
     .eq('id', id)
     .maybeSingle();
 
-  if (pageError || !pageData) return null;
+  if (pageError || !pageData) return { page: null, error: 'Não foi possível carregar a página.' };
 
   const { data: linksData } = await supabase
     .from('page_links')
@@ -34,32 +35,42 @@ export async function getPageById(id: string): Promise<LinkPageWithLinks | null>
     .order('position', { ascending: true });
 
   return {
-    ...pageData,
-    page_links: (linksData as PageLink[]) || [],
-  } as LinkPageWithLinks;
+    page: {
+      ...pageData,
+      page_links: (linksData as PageLink[]) || [],
+    } as LinkPageWithLinks,
+    error: null,
+  };
 }
 
-export async function getPageBySlug(slug: string): Promise<LinkPageWithLinks | null> {
-  const { data: pageData, error: pageError } = await supabase
-    .from('link_pages')
-    .select('*')
-    .eq('slug', slug)
-    .eq('is_active', true)
-    .maybeSingle();
+export async function resolvePublicPage(slug: string): Promise<{ page: LinkPageWithLinks | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('resolve_public_page', { p_slug: slug });
+  if (error || !data) return { page: null, error: 'Página não encontrada.' };
 
-  if (pageError || !pageData) return null;
+  const result = data as { status: string; page?: Record<string, unknown>; links?: Record<string, unknown>[] };
+  if (result.status !== 'found' || !result.page) return { page: null, error: 'Página não encontrada.' };
 
-  const { data: linksData } = await supabase
-    .from('page_links')
-    .select('*')
-    .eq('page_id', pageData.id)
-    .eq('is_active', true)
-    .order('position', { ascending: true });
+  const p = result.page;
+  const page: LinkPageWithLinks = {
+    id: p.id as string,
+    slug: p.slug as string,
+    title: p.title as string,
+    description: (p.description as string) || null,
+    avatar_url: (p.avatar_url as string) || null,
+    created_at: '',
+    is_active: true,
+    owner_id: null,
+    page_links: (result.links || []).map((l) => ({
+      id: l.id as string,
+      page_id: page.id,
+      label: l.label as string,
+      url: l.url as string,
+      position: l.position as number,
+      is_active: true,
+    })),
+  };
 
-  return {
-    ...pageData,
-    page_links: (linksData as PageLink[]) || [],
-  } as LinkPageWithLinks;
+  return { page, error: null };
 }
 
 export async function createPage(params: {
@@ -80,13 +91,21 @@ export async function createPage(params: {
     return { page: null, error: 'Este slug já está em uso.' };
   }
 
+  let avatarUrl: string | null = null;
+  if (params.avatarUrl) {
+    avatarUrl = normalizeAvatarUrl(params.avatarUrl);
+    if (!avatarUrl) {
+      return { page: null, error: 'URL do avatar inválida. Use apenas http:// ou https://.' };
+    }
+  }
+
   const { data, error } = await supabase
     .from('link_pages')
     .insert({
       slug,
       title: params.title,
       description: params.description || null,
-      avatar_url: params.avatarUrl || null,
+      avatar_url: avatarUrl,
       is_active: true,
     })
     .select()
@@ -109,7 +128,18 @@ export async function updatePage(id: string, params: {
 
   if (params.title !== undefined) updates.title = params.title;
   if (params.description !== undefined) updates.description = params.description || null;
-  if (params.avatarUrl !== undefined) updates.avatar_url = params.avatarUrl || null;
+
+  if (params.avatarUrl !== undefined) {
+    if (params.avatarUrl) {
+      const normalized = normalizeAvatarUrl(params.avatarUrl);
+      if (!normalized) {
+        return { page: null, error: 'URL do avatar inválida. Use apenas http:// ou https://.' };
+      }
+      updates.avatar_url = normalized;
+    } else {
+      updates.avatar_url = null;
+    }
+  }
 
   if (params.slug !== undefined) {
     const slug = normalizeAlias(params.slug);
@@ -119,10 +149,9 @@ export async function updatePage(id: string, params: {
     if (isReservedRoute(slug)) {
       return { page: null, error: 'Este slug é uma rota reservada e não pode ser usado.' };
     }
-    // Check if slug is available (or belongs to this page)
     const available = await checkSlugAvailable(slug);
     if (!available) {
-      const current = await getPageById(id);
+      const { page: current } = await getPageById(id);
       if (current && current.slug !== slug) {
         return { page: null, error: 'Este slug já está em uso.' };
       }
@@ -160,8 +189,13 @@ export async function togglePageActive(id: string, active: boolean): Promise<boo
   return !error;
 }
 
-export async function addPageLink(pageId: string, label: string, url: string): Promise<PageLink | null> {
-  // Get current max position
+export async function addPageLink(pageId: string, label: string, url: string): Promise<{ link: PageLink | null; error: string | null }> {
+  const { normalizePageLinkUrl } = await import('@/utils/pageLinkUrl');
+  const normalizedUrl = normalizePageLinkUrl(url);
+  if (!normalizedUrl) {
+    return { link: null, error: 'URL inválida. Use http://, https://, mailto: ou tel:.' };
+  }
+
   const { data: existing } = await supabase
     .from('page_links')
     .select('position')
@@ -176,23 +210,37 @@ export async function addPageLink(pageId: string, label: string, url: string): P
     .insert({
       page_id: pageId,
       label,
-      url,
+      url: normalizedUrl,
       position: nextPos,
       is_active: true,
     })
     .select()
     .single();
 
-  if (error) return null;
-  return data as PageLink;
+  if (error) return { link: null, error: 'Erro ao adicionar link.' };
+  return { link: data as PageLink, error: null };
 }
 
-export async function updatePageLink(id: string, updates: { label?: string; url?: string; is_active?: boolean }): Promise<boolean> {
+export async function updatePageLink(id: string, updates: { label?: string; url?: string; is_active?: boolean }): Promise<{ error: string | null }> {
+  const finalUpdates: Record<string, unknown> = {};
+
+  if (updates.label !== undefined) finalUpdates.label = updates.label;
+  if (updates.is_active !== undefined) finalUpdates.is_active = updates.is_active;
+
+  if (updates.url !== undefined) {
+    const { normalizePageLinkUrl } = await import('@/utils/pageLinkUrl');
+    const normalizedUrl = normalizePageLinkUrl(updates.url);
+    if (!normalizedUrl) {
+      return { error: 'URL inválida. Use http://, https://, mailto: ou tel:.' };
+    }
+    finalUpdates.url = normalizedUrl;
+  }
+
   const { error } = await supabase
     .from('page_links')
-    .update(updates)
+    .update(finalUpdates)
     .eq('id', id);
-  return !error;
+  return { error: error ? 'Erro ao atualizar link.' : null };
 }
 
 export async function deletePageLink(id: string): Promise<boolean> {

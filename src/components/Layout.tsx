@@ -1,6 +1,7 @@
-import { Link, useLocation } from 'react-router-dom';
-import { Link2, FileText, Info, Home, Menu, X } from 'lucide-react';
+import { Link, useLocation, Outlet } from 'react-router-dom';
+import { Link2, FileText, Info, Home, Menu, X, LogOut } from 'lucide-react';
 import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 
 const navItems = [
   { to: '/', label: 'Início', icon: Home },
@@ -9,13 +10,19 @@ const navItems = [
   { to: '/sobre', label: 'Sobre', icon: Info },
 ];
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default function Layout() {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { user, signOut } = useAuth();
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
     return location.pathname.startsWith(path);
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    setMobileOpen(false);
   };
 
   return (
@@ -50,6 +57,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   </Link>
                 );
               })}
+              {user && (
+                <button
+                  onClick={handleSignOut}
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800/50 transition-colors"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sair
+                </button>
+              )}
             </nav>
 
             {/* Mobile toggle */}
@@ -83,12 +99,23 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </Link>
               );
             })}
+            {user && (
+              <button
+                onClick={handleSignOut}
+                className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800/50 transition-colors"
+              >
+                <LogOut className="h-4 w-4" />
+                Sair
+              </button>
+            )}
           </nav>
         )}
       </header>
 
       {/* Main content */}
-      <main className="mx-auto max-w-6xl px-4 sm:px-6 py-8">{children}</main>
+      <main className="mx-auto max-w-6xl px-4 sm:px-6 py-8">
+        <Outlet />
+      </main>
 
       {/* Footer */}
       <footer className="border-t border-slate-800 mt-12">

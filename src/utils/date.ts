@@ -85,3 +85,15 @@ export function computeExpiration(option: 'never' | '24h' | '7d' | '30d' | 'cust
   }
   return null;
 }
+
+/**
+ * Validate that a custom datetime-local value is valid and in the future.
+ * Returns null if valid, or an error message.
+ */
+export function validateCustomExpiration(customDate: string): string | null {
+  if (!customDate) return 'Selecione uma data de expiração.';
+  const d = new Date(customDate);
+  if (isNaN(d.getTime())) return 'Data de expiração inválida.';
+  if (d.getTime() <= Date.now()) return 'A data de expiração deve ser no futuro.';
+  return null;
+}

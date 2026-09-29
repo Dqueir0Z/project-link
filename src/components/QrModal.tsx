@@ -29,11 +29,11 @@ export default function QrModal({
   return (
     <Modal open={open} onClose={onClose} title="QR Code">
       <div className="flex flex-col items-center gap-4">
-        <div className="rounded-xl border border-slate-700 bg-white p-4">
+        <div className="rounded-xl border border-slate-700 bg-white p-3 sm:p-4 w-full max-w-[300px] flex items-center justify-center">
           {loading ? (
-            <div className="h-[300px] w-[300px] animate-pulse bg-slate-200" />
+            <div className="w-full aspect-square animate-pulse bg-slate-200" />
           ) : (
-            <img src={qrUrl} alt="QR Code" className="h-[300px] w-[300px]" />
+            <img src={qrUrl} alt="QR Code" className="w-full h-auto" style={{ maxWidth: '300px' }} />
           )}
         </div>
         <p className="text-sm font-medium text-slate-300 break-all text-center">{shortUrl}</p>

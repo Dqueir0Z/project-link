@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 import type { Link, ClickEvent, ExpirationOption, ResolveStatus } from '@/types';
 import { normalizeUrl } from '@/utils/url';
 import { normalizeAlias, isValidAlias, generateShortCode, isReservedRoute } from '@/utils/alias';
-import { computeExpiration } from '@/utils/date';
+import { computeExpiration, validateCustomExpiration } from '@/utils/date';
 
 export async function checkCodeAvailable(code: string): Promise<boolean> {
   const { data, error } = await supabase.rpc('check_code_available', { p_code: code });
@@ -21,7 +21,7 @@ export async function createLink(params: {
     return { link: null, error: 'Digite uma URL válida.' };
   }
 
-  let shortCode: string;
+  let shortCode = '';
 
   if (params.alias && params.alias.trim()) {
     const alias = normalizeAlias(params.alias);
@@ -39,9 +39,8 @@ export async function createLink(params: {
   } else {
     // Generate unique random code
     let attempts = 0;
-    let code = '';
     while (attempts < 10) {
-      code = generateShortCode();
+      const code = generateShortCode();
       const available = await checkCodeAvailable(code);
       if (available) {
         shortCode = code;
@@ -51,6 +50,16 @@ export async function createLink(params: {
     }
     if (!shortCode) {
       return { link: null, error: 'Não foi possível gerar um código único. Tente novamente.' };
+    }
+  }
+
+  if (params.expiration === 'custom') {
+    if (!params.customDate) {
+      return { link: null, error: 'Selecione uma data de expiração.' };
+    }
+    const validationError = validateCustomExpiration(params.customDate);
+    if (validationError) {
+      return { link: null, error: validationError };
     }
   }
 
@@ -75,36 +84,25 @@ export async function createLink(params: {
   return { link: data as Link, error: null };
 }
 
-export async function getAllLinks(): Promise<Link[]> {
+export async function getAllLinks(): Promise<{ links: Link[]; error: string | null }> {
   const { data, error } = await supabase
     .from('links')
     .select('*')
     .order('created_at', { ascending: false });
 
-  if (error || !data) return [];
-  return data as Link[];
+  if (error) return { links: [], error: 'Não foi possível carregar seus links.' };
+  return { links: (data as Link[]) || [], error: null };
 }
 
-export async function getLinkById(id: string): Promise<Link | null> {
+export async function getLinkById(id: string): Promise<{ link: Link | null; error: string | null }> {
   const { data, error } = await supabase
     .from('links')
     .select('*')
     .eq('id', id)
     .maybeSingle();
 
-  if (error || !data) return null;
-  return data as Link;
-}
-
-export async function getLinkByShortCode(shortCode: string): Promise<Link | null> {
-  const { data, error } = await supabase
-    .from('links')
-    .select('*')
-    .eq('short_code', shortCode)
-    .maybeSingle();
-
-  if (error || !data) return null;
-  return data as Link;
+  if (error) return { link: null, error: 'Não foi possível carregar o link.' };
+  return { link: data as Link, error: null };
 }
 
 export async function resolveShortLink(shortCode: string): Promise<{ status: ResolveStatus; originalUrl?: string }> {
@@ -141,8 +139,7 @@ export async function updateLink(id: string, params: {
     }
     const available = await checkCodeAvailable(alias);
     if (!available) {
-      // Check if it's our own link
-      const current = await getLinkById(id);
+      const { link: current } = await getLinkById(id);
       if (current && current.short_code !== alias) {
         return { link: null, error: 'Este alias já está em uso.' };
       }
@@ -151,6 +148,15 @@ export async function updateLink(id: string, params: {
   }
 
   if (params.expiration !== undefined) {
+    if (params.expiration === 'custom') {
+      if (!params.customDate) {
+        return { link: null, error: 'Selecione uma data de expiração.' };
+      }
+      const validationError = validateCustomExpiration(params.customDate);
+      if (validationError) {
+        return { link: null, error: validationError };
+      }
+    }
     updates.expires_at = computeExpiration(params.expiration, params.customDate);
   }
 
@@ -184,7 +190,7 @@ export async function deleteLink(id: string): Promise<boolean> {
   return !error;
 }
 
-export async function getClickEvents(linkId: string): Promise<ClickEvent[]> {
+export async function getClickEvents(linkId: string): Promise<{ events: ClickEvent[]; error: string | null }> {
   const { data, error } = await supabase
     .from('click_events')
     .select('*')
@@ -192,14 +198,15 @@ export async function getClickEvents(linkId: string): Promise<ClickEvent[]> {
     .order('clicked_at', { ascending: false })
     .limit(50);
 
-  if (error || !data) return [];
-  return data as ClickEvent[];
+  if (error) return { events: [], error: 'Não foi possível carregar o histórico.' };
+  return { events: (data as ClickEvent[]) || [], error: null };
 }
 
-export async function getDashboardStats(): Promise<{ totalLinks: number; totalClicks: number; activeLinks: number }> {
-  const links = await getAllLinks();
+export function computeStatsFromLinks(links: Link[]): { totalLinks: number; totalClicks: number; activeLinks: number } {
   const totalLinks = links.length;
   const totalClicks = links.reduce((sum, l) => sum + l.click_count, 0);
-  const activeLinks = links.filter(l => l.is_active && !l.expires_at).length + links.filter(l => l.is_active && l.expires_at && new Date(l.expires_at).getTime() > Date.now()).length;
+  const activeLinks = links.filter(
+    (l) => l.is_active && (!l.expires_at || new Date(l.expires_at).getTime() > Date.now())
+  ).length;
   return { totalLinks, totalClicks, activeLinks };
 }
