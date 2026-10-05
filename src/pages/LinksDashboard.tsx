@@ -1,25 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAllLinks, deleteLink, toggleLinkActive, getDashboardStats } from '@/services/links';
+import { getAllLinks, deleteLink, toggleLinkActive, computeStatsFromLinks } from '@/services/links';
 import type { Link } from '@/types';
 import { buildShortUrl } from '@/utils/url';
 import { formatDateTime, timeAgo } from '@/utils/date';
 import StatusBadge from '@/components/StatusBadge';
 import EmptyState from '@/components/EmptyState';
+import QrModal from '@/components/QrModal';
 import Toast from '@/components/Toast';
 import { useToast } from '@/hooks/useToast';
-import { Search, Plus, Copy, ExternalLink, MoreVertical, Trash2, Power, Eye, Pencil, Link2, MousePointerClick, CheckCircle } from 'lucide-react';
-import { useRef } from 'react';
+import { Search, Plus, Copy, ExternalLink, MoreVertical, Trash2, Power, Eye, Pencil, Link2, MousePointerClick, CheckCircle, QrCode as QrIcon, AlertCircle } from 'lucide-react';
 
 export default function LinksDashboard() {
   const navigate = useNavigate();
   const { toast, showToast } = useToast();
   const [links, setLinks] = useState<Link[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [stats, setStats] = useState({ totalLinks: 0, totalClicks: 0, activeLinks: 0 });
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [qrLink, setQrLink] = useState<Link | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -38,15 +40,23 @@ export default function LinksDashboard() {
 
   const loadData = async () => {
     setLoading(true);
-    const [linksData, statsData] = await Promise.all([getAllLinks(), getDashboardStats()]);
-    setLinks(linksData);
-    setStats(statsData);
+    setError(null);
+    const { links: linksData, error: err } = await getAllLinks();
+    if (err) {
+      setError(err);
+      setLinks([]);
+      setStats({ totalLinks: 0, totalClicks: 0, activeLinks: 0 });
+    } else {
+      setLinks(linksData);
+      setStats(computeStatsFromLinks(linksData));
+    }
     setLoading(false);
   };
 
   const handleCopy = (url: string) => {
     navigator.clipboard.writeText(url);
     showToast('Link copiado!', 'success');
+    setOpenMenu(null);
   };
 
   const handleDelete = async (id: string) => {
@@ -87,9 +97,27 @@ export default function LinksDashboard() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
+          <AlertCircle className="h-7 w-7 text-red-400" />
+        </div>
+        <p className="text-lg font-semibold text-white">{error}</p>
+        <button
+          onClick={loadData}
+          className="mt-6 rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div>
+    <div ref={menuRef}>
       {toast && <Toast message={toast.message} type={toast.type} />}
+      {qrLink && <QrModal open={!!qrLink} onClose={() => setQrLink(null)} shortCode={qrLink.short_code} />}
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-6">
@@ -182,11 +210,12 @@ export default function LinksDashboard() {
                         open={openMenu === link.id}
                         onToggle={() => setOpenMenu(openMenu === link.id ? null : link.id)}
                         onCopy={() => handleCopy(buildShortUrl(link.short_code))}
-                        onOpen={() => window.open(buildShortUrl(link.short_code), '_blank')}
+                        onOpen={() => { window.open(buildShortUrl(link.short_code), '_blank'); setOpenMenu(null); }}
                         onDetails={() => navigate(`/links/${link.id}`)}
+                        onQr={() => { setQrLink(link); setOpenMenu(null); }}
                         onEdit={() => navigate(`/links/${link.id}/edit`)}
                         onToggleActive={() => handleToggle(link)}
-                        onDelete={() => setDeleteConfirm(link.id)}
+                        onDelete={() => { setDeleteConfirm(link.id); setOpenMenu(null); }}
                       />
                     </td>
                   </tr>
@@ -233,11 +262,12 @@ export default function LinksDashboard() {
                     open={openMenu === link.id}
                     onToggle={() => setOpenMenu(openMenu === link.id ? null : link.id)}
                     onCopy={() => handleCopy(buildShortUrl(link.short_code))}
-                    onOpen={() => window.open(buildShortUrl(link.short_code), '_blank')}
+                    onOpen={() => { window.open(buildShortUrl(link.short_code), '_blank'); setOpenMenu(null); }}
                     onDetails={() => navigate(`/links/${link.id}`)}
+                    onQr={() => { setQrLink(link); setOpenMenu(null); }}
                     onEdit={() => navigate(`/links/${link.id}/edit`)}
                     onToggleActive={() => handleToggle(link)}
-                    onDelete={() => setDeleteConfirm(link.id)}
+                    onDelete={() => { setDeleteConfirm(link.id); setOpenMenu(null); }}
                   />
                 </div>
               </div>
@@ -296,6 +326,7 @@ function ActionsMenu({
   onCopy,
   onOpen,
   onDetails,
+  onQr,
   onEdit,
   onToggleActive,
   onDelete,
@@ -306,12 +337,13 @@ function ActionsMenu({
   onCopy: () => void;
   onOpen: () => void;
   onDetails: () => void;
+  onQr: () => void;
   onEdit: () => void;
   onToggleActive: () => void;
   onDelete: () => void;
 }) {
   return (
-    <div className="relative inline-block" ref={null}>
+    <div className="relative inline-block">
       <button
         onClick={onToggle}
         className="rounded-lg p-2 text-slate-400 hover:text-white hover:bg-slate-800"
@@ -320,13 +352,14 @@ function ActionsMenu({
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-lg border border-slate-700 bg-slate-900 py-1 shadow-xl">
-          <MenuItem icon={Copy} label="Copiar link" onClick={() => { onCopy(); onToggle(); }} />
-          <MenuItem icon={ExternalLink} label="Abrir link" onClick={() => { onOpen(); onToggle(); }} />
+          <MenuItem icon={Copy} label="Copiar link" onClick={onCopy} />
+          <MenuItem icon={ExternalLink} label="Abrir link" onClick={onOpen} />
           <MenuItem icon={Eye} label="Ver detalhes" onClick={() => { onDetails(); onToggle(); }} />
+          <MenuItem icon={QrIcon} label="QR Code" onClick={onQr} />
           <MenuItem icon={Pencil} label="Editar" onClick={() => { onEdit(); onToggle(); }} />
           <MenuItem icon={Power} label={link.is_active ? 'Desativar' : 'Ativar'} onClick={onToggleActive} />
           <div className="my-1 border-t border-slate-800" />
-          <MenuItem icon={Trash2} label="Excluir" onClick={() => { onDelete(); onToggle(); }} danger />
+          <MenuItem icon={Trash2} label="Excluir" onClick={onDelete} danger />
         </div>
       )}
     </div>

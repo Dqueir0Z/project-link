@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { resolveShortLink, resolvePublicPage } from '@/services/pages';
+import { resolveShortLink } from '@/services/links';
+import { resolvePublicPage } from '@/services/pages';
 import type { LinkPageWithLinks } from '@/types';
 import PublicPageView from './PublicPageView';
 import { Link2, AlertTriangle, Clock, PowerOff } from 'lucide-react';

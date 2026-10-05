@@ -9,7 +9,7 @@ import QrModal from '@/components/QrModal';
 import Toast from '@/components/Toast';
 import Modal from '@/components/Modal';
 import { useToast } from '@/hooks/useToast';
-import { ArrowLeft, Copy, ExternalLink, QrCode as QrIcon, Pencil, Power, Trash2, Link2, MousePointerClick, Calendar, Clock, Eye } from 'lucide-react';
+import { ArrowLeft, Copy, ExternalLink, QrCode as QrIcon, Pencil, Power, Trash2, Link2, MousePointerClick, Calendar, Clock, Eye, AlertCircle } from 'lucide-react';
 
 export default function LinkDetails() {
   const { id } = useParams<{ id: string }>();
@@ -18,14 +18,21 @@ export default function LinkDetails() {
   const [link, setLink] = useState<Link | null>(null);
   const [events, setEvents] = useState<ClickEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [qrOpen, setQrOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
-    Promise.all([getLinkById(id), getClickEvents(id)]).then(([l, e]) => {
+    Promise.all([
+      getLinkById(id),
+      getClickEvents(id),
+    ]).then(([{ link: l, error: linkErr }, { events: e, error: eventsErr }]) => {
+      if (linkErr) setError(linkErr);
+      else if (!l) setError('Link não encontrado.');
       setLink(l);
       setEvents(e);
+      if (eventsErr) console.warn('Failed to load click events:', eventsErr);
       setLoading(false);
     });
   }, [id]);
@@ -38,10 +45,13 @@ export default function LinkDetails() {
     );
   }
 
-  if (!link) {
+  if (error || !link) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
-        <p className="text-lg text-slate-400">Link não encontrado.</p>
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
+          <AlertCircle className="h-7 w-7 text-red-400" />
+        </div>
+        <p className="text-lg text-slate-400">{error || 'Link não encontrado.'}</p>
         <button onClick={() => navigate('/links')} className="mt-4 text-sm text-emerald-400 hover:underline">
           Voltar para Meus Links
         </button>

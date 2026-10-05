@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getLinkById, updateLink, checkCodeAvailable } from '@/services/links';
 import type { Link, ExpirationOption } from '@/types';
-import { normalizeUrl } from '@/utils/url';
+import { normalizeUrl, getOriginPrefix } from '@/utils/url';
 import { normalizeAlias, isValidAlias } from '@/utils/alias';
-import { utcToLocalInput, formatDateTime } from '@/utils/date';
+import { utcToLocalInput, formatDateTime, validateCustomExpiration } from '@/utils/date';
 import Toast from '@/components/Toast';
 import { useToast } from '@/hooks/useToast';
 import { ArrowLeft, Loader2, Check, X, Calendar } from 'lucide-react';
@@ -26,8 +26,9 @@ export default function EditLink() {
 
   useEffect(() => {
     if (!id) return;
-    getLinkById(id).then((l) => {
+    getLinkById(id).then(({ link: l, error }) => {
       if (!l) {
+        if (error) showToast(error, 'error');
         setLoading(false);
         return;
       }
@@ -90,9 +91,12 @@ export default function EditLink() {
       return;
     }
 
-    if (expiration === 'custom' && !customDate) {
-      showToast('Selecione uma data de expiração.', 'error');
-      return;
+    if (expiration === 'custom') {
+      const err = validateCustomExpiration(customDate);
+      if (err) {
+        showToast(err, 'error');
+        return;
+      }
     }
 
     const aliasChanged = alias.trim() && normalizeAlias(alias) !== originalAlias;
@@ -124,6 +128,8 @@ export default function EditLink() {
     setExpiration('never');
     setCustomDate('');
   };
+
+  const originPrefix = getOriginPrefix();
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -159,7 +165,7 @@ export default function EditLink() {
           <label className="block text-sm font-medium text-slate-300 mb-2">Seu link</label>
           <div className="flex items-stretch">
             <div className="flex items-center rounded-l-lg border border-r-0 border-slate-700 bg-slate-800 px-3 text-sm text-slate-400">
-              linkforge.app/
+              {originPrefix}
             </div>
             <input
               type="text"

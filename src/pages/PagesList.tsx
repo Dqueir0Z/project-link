@@ -5,7 +5,7 @@ import { formatDate } from '@/utils/date';
 import EmptyState from '@/components/EmptyState';
 import Toast from '@/components/Toast';
 import { useToast } from '@/hooks/useToast';
-import { FileText, Plus, MoreVertical, Copy, ExternalLink, Pencil, Trash2, Power, Search } from 'lucide-react';
+import { FileText, Plus, MoreVertical, Copy, ExternalLink, Pencil, Trash2, Power, Search, AlertCircle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -14,6 +14,7 @@ export default function PagesList() {
   const { toast, showToast } = useToast();
   const [pages, setPages] = useState<LinkPage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -35,14 +36,21 @@ export default function PagesList() {
 
   const loadPages = async () => {
     setLoading(true);
-    const data = await getAllPages();
-    setPages(data);
+    setError(null);
+    const { pages: data, error: err } = await getAllPages();
+    if (err) {
+      setError(err);
+      setPages([]);
+    } else {
+      setPages(data);
+    }
     setLoading(false);
   };
 
   const handleCopy = (url: string) => {
     navigator.clipboard.writeText(url);
     showToast('Link copiado!', 'success');
+    setOpenMenu(null);
   };
 
   const handleDelete = async (id: string) => {
@@ -76,6 +84,23 @@ export default function PagesList() {
     return (
       <div className="flex justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-emerald-400" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
+          <AlertCircle className="h-7 w-7 text-red-400" />
+        </div>
+        <p className="text-lg font-semibold text-white">{error}</p>
+        <button
+          onClick={loadPages}
+          className="mt-6 rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
+        >
+          Tentar novamente
+        </button>
       </div>
     );
   }
@@ -142,7 +167,7 @@ export default function PagesList() {
                   </button>
                   {openMenu === page.id && (
                     <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-lg border border-slate-700 bg-slate-900 py-1 shadow-xl">
-                      <MenuItem icon={Copy} label="Copiar link" onClick={() => { handleCopy(buildPageUrl(page.slug)); setOpenMenu(null); }} />
+                      <MenuItem icon={Copy} label="Copiar link" onClick={() => handleCopy(buildPageUrl(page.slug))} />
                       <MenuItem icon={ExternalLink} label="Abrir página" onClick={() => { window.open(buildPageUrl(page.slug), '_blank'); setOpenMenu(null); }} />
                       <MenuItem icon={Pencil} label="Editar" onClick={() => { navigate(`/pages/${page.id}/edit`); setOpenMenu(null); }} />
                       <MenuItem icon={Power} label={page.is_active ? 'Desativar' : 'Ativar'} onClick={() => handleToggle(page)} />

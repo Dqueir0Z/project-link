@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPage, checkSlugAvailable } from '@/services/pages';
 import { normalizeAlias, isValidAlias } from '@/utils/alias';
+import { getOriginPrefix } from '@/utils/url';
 import Toast from '@/components/Toast';
 import { useToast } from '@/hooks/useToast';
 import { ArrowLeft, Loader2, Check, X } from 'lucide-react';
@@ -66,6 +67,8 @@ export default function NewPage() {
     navigate(`/pages/${page!.id}/edit`);
   };
 
+  const originPrefix = getOriginPrefix();
+
   return (
     <div className="max-w-2xl mx-auto">
       {toast && <Toast message={toast.message} type={toast.type} />}
@@ -98,7 +101,7 @@ export default function NewPage() {
           <label className="block text-sm font-medium text-slate-300 mb-2">Slug</label>
           <div className="flex items-stretch">
             <div className="flex items-center rounded-l-lg border border-r-0 border-slate-700 bg-slate-800 px-3 text-sm text-slate-400">
-              linkforge.app/
+              {originPrefix}
             </div>
             <input
               type="text"
